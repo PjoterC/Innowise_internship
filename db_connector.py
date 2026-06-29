@@ -4,9 +4,9 @@ class DbConnector:
     def __init__(self):
         pass
     
-    def CreateConnection(db_name, db_user, db_password, db_host="localhost", db_port="5432"):
+    def CreateConnection(db_name = "innowise_python_postgres", db_user = "user", db_password = "password", db_host="localhost", db_port="5432"):
         """
-        Create a connection to the PostgreSQL database.
+        Create a connection to the PostgreSQL database. (NEEDS TO ACCEPT OTHER DATABASE TYPES IN THE FUTURE)
         """
         try:
             conn = pg.connect(
@@ -21,5 +21,12 @@ class DbConnector:
         except pg.OperationalError as e:
             print(f"Error: {e}")
             return None
+        
+    def CloseConnection(conn):
+        """
+        Close the connection to the database.
+        """
+        if conn:
+            conn.close()
+            print("✅ Connection closed")
 
-DbConnector.CreateConnection(db_name="innowise_python_postgres", db_user="user", db_password="password")
