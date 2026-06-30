@@ -1,6 +1,7 @@
 import data_loader
 from db_connector import DatabaseConnection, PostgresConnection
 from unloader import JsonConverter, XMLConverter, ReadQueryWrapper
+from table_handling import TableCreator
 
 
 def LoadData(connection) -> None:
@@ -32,7 +33,7 @@ possibleConverters = [JsonConverter, XMLConverter]
 
 
 def main(database: DatabaseConnection = None) -> None: # type: ignore
-
+    
 
 
 
@@ -44,6 +45,8 @@ def main(database: DatabaseConnection = None) -> None: # type: ignore
         return
 
     print("✅ Database connection successful")
+
+    TableCreator(connection).CreateAll()
     
     while(True):
         print("\n1. Load the data")

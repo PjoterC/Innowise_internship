@@ -1,5 +1,5 @@
 
-from table_mapping import Record
+from table_handling import Record
 from abc import ABC, abstractmethod
 from typing import List
 import json

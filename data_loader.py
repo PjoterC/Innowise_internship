@@ -2,7 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import List
 
-from table_mapping import *
+from table_handling import *
 
 
 
@@ -42,7 +42,7 @@ class DataLoader:
         """
         rows = [mapping.Row(record) for record in source.Read()]
         cursor = self._connection.cursor()
-        cursor.executemany(mapping.Upsert, rows)
+        cursor.executemany(mapping.Upsert(), rows)
         self._connection.commit()
         return cursor.rowcount
 
