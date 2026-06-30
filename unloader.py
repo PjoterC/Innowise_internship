@@ -33,7 +33,7 @@ class XMLConverter(DataConverter):
             record_element = ET.SubElement(root, "record")
             for key, value in record.items():
                 field = ET.SubElement(record_element, key)
-                field.text = "" if value is None else str(value)
+                field.text = "" if value is None else str(f"\"{value}\"")
         ET.indent(root)
         return ET.tostring(root, encoding="unicode")
 
@@ -56,7 +56,7 @@ class ReadQueryWrapper:
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
     
 
-    # 4 requested SQL query wrappers
+    # 4 requested SQL query wrappers (postgres compatible)
     def GetStudentPerRoom(self) -> List[Record]:
         return self._fetch(
         '''
