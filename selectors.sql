@@ -1,4 +1,4 @@
--- 5 rooms with the highest student count
+-- rooms with student count
 EXPLAIN (ANALYZE, BUFFERS)
 WITH student_counts as (
     SELECT room, COUNT(id) as student_count FROM students GROUP BY room

@@ -31,18 +31,18 @@ class DatabaseConnection(ABC):
     """Abstraction for a database connection that callers depend on."""
 
     @abstractmethod
-    def connect(self):
+    def Connect(self):
         """Open (if needed) and return the underlying DB-API connection."""
 
     @abstractmethod
-    def close(self) -> None:
+    def Close(self) -> None:
         """Close the connection if it is open. Safe to call repeatedly."""
 
     def __enter__(self):
-        return self.connect()
+        return self.Connect()
 
     def __exit__(self, exc_type, exc, traceback) -> None:
-        self.close()
+        self.Close()
 
 
 class PostgresConnection(DatabaseConnection):
@@ -52,7 +52,7 @@ class PostgresConnection(DatabaseConnection):
         self._config = config or DatabaseConfig.from_env()
         self._connection = None
 
-    def connect(self):
+    def Connect(self):
         if self._connection is None:
             self._connection = pg.connect(
                 dbname=self._config.name,
@@ -63,7 +63,7 @@ class PostgresConnection(DatabaseConnection):
             )
         return self._connection
 
-    def close(self) -> None:
+    def Close(self) -> None:
         if self._connection is not None:
             self._connection.close()
             self._connection = None
