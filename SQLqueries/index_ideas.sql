@@ -8,7 +8,7 @@
 -- NOTE: In order to test the index selection, the enable_seqscan option was set to off, as on small tables sequential scan is faster than index scan.
 CREATE INDEX idx_students_room_birthday ON students(room, birthday);
 
-DROP INDEX idx_students_room_birthday;
+
 
 
 -- Index on students table for room and sex columns to speed up queries filtering by room and sex
@@ -19,5 +19,8 @@ DROP INDEX idx_students_room_birthday;
 -- NOTE: In order to test the index selection, the enable_seqscan option was set to off, as on small tables sequential scan is faster than index scan.
 CREATE INDEX idx_students_room_sex ON students(room, sex);
 
-DROP INDEX idx_students_room_sex;
+
+--For testing
+--DROP INDEX idx_students_room_birthday;
+--DROP INDEX idx_students_room_sex;
 

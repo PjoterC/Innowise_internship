@@ -15,7 +15,7 @@ After cloning or downloading the repository, inside the main directory use **doc
 
 Install all the python requirements using **pip install -r requirements.txt** (or just install it manually, since it's only 1 package)
 
-To run the program, simply run the **main.py** file. The displayed messages should explain what to do and what options you have. The program has the default database connection parameters pre-programmed, but if you change them in the docker-compose, you can pass them from a .env file (check **db_connector.py**).
+To run the program, simply run the **main.py** file. The displayed messages should explain what to do and what options you have - everything regarding loading, querying and selecting output format can be done through the console app. The program has the default database connection parameters pre-programmed, but if you change them in the docker-compose, you can pass them from a .env file (check **db_connector.py**).
 
 
 ### Database indexes
