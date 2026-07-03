@@ -35,7 +35,7 @@ class XMLConverter(DataConverter):
             record_element = ET.SubElement(root, "record")
             for key, value in record.items():
                 field = ET.SubElement(record_element, key)
-                field.text = "" if value is None else str(f"\"{value}\"")
+                field.text = "" if value is None else str(value)
         ET.indent(root)
         return ET.tostring(root, encoding="unicode")
 
@@ -82,9 +82,14 @@ class ReadQueryWrapper:
         """
         return self._fetch(
         '''
-        SELECT rooms.*, AVG(age(CURRENT_DATE, students.birthday)) as avg_age FROM rooms INNER JOIN students ON rooms.id = students.room
-        GROUP BY rooms.id
-        ORDER BY avg_age ASC
+        SELECT
+        rooms.id,
+        rooms.name,
+        AVG(EXTRACT(YEAR FROM age(CURRENT_DATE, students.birthday)))::numeric(10, 2) AS avg_age_years
+        FROM rooms
+        INNER JOIN students ON rooms.id = students.room
+        GROUP BY rooms.id, rooms.name
+        ORDER BY avg_age_years ASC
         LIMIT 5;
 
         '''
@@ -95,11 +100,14 @@ class ReadQueryWrapper:
         """
         return self._fetch(
         '''
-        SELECT rooms.*, (MAX(students.birthday) - MIN(students.birthday)) AS age_diff
+        SELECT 
+        rooms.id, 
+        rooms.name, 
+        (EXTRACT(YEAR FROM age(MAX(students.birthday), MIN(students.birthday))))::integer AS age_diff_years
         FROM rooms
         JOIN students ON rooms.id = students.room
-        GROUP BY rooms.id
-        ORDER BY age_diff DESC
+        GROUP BY rooms.id, rooms.name
+        ORDER BY age_diff_years DESC
         LIMIT 5;
 
         '''

@@ -17,9 +17,14 @@ LEFT JOIN student_counts ON rooms.id = student_counts.room;
 
 -- 5 rooms with the lowest average age of students
 EXPLAIN (ANALYZE, BUFFERS)
-SELECT rooms.*, AVG(age(CURRENT_DATE, students.birthday)) as avg_age FROM rooms INNER JOIN students ON rooms.id = students.room
-GROUP BY rooms.id
-ORDER BY avg_age ASC
+SELECT
+rooms.id,
+rooms.name,
+AVG(EXTRACT(YEAR FROM age(CURRENT_DATE, students.birthday)))::numeric(10, 2) AS avg_age_years
+FROM rooms
+INNER JOIN students ON rooms.id = students.room
+GROUP BY rooms.id, rooms.name
+ORDER BY avg_age_years ASC
 LIMIT 5;
 
 
@@ -28,11 +33,14 @@ LIMIT 5;
 
 -- 5 rooms with the largest difference in the age of students
 EXPLAIN (ANALYZE, BUFFERS)
-SELECT rooms.*, (MAX(students.birthday) - MIN(students.birthday)) AS age_diff
+SELECT 
+rooms.id, 
+rooms.name, 
+(EXTRACT(YEAR FROM age(MAX(students.birthday), MIN(students.birthday))))::integer AS age_diff_years
 FROM rooms
 JOIN students ON rooms.id = students.room
-GROUP BY rooms.id
-ORDER BY age_diff DESC
+GROUP BY rooms.id, rooms.name
+ORDER BY age_diff_years DESC
 LIMIT 5;
 
 

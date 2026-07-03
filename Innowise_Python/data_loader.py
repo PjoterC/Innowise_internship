@@ -2,7 +2,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import List
 
-from table_handling import *
+from table_handling import TableMapping, Record, ROOMS, STUDENTS
 
 
 

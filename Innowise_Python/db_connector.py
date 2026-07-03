@@ -2,6 +2,10 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import psycopg2 as pg
+from dotenv import load_dotenv
+
+# Load variables from a .env file (if present) into the environment.
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 
 @dataclass(frozen=True)
@@ -16,7 +20,7 @@ class DatabaseConfig:
 
     @classmethod
     def from_env(cls) -> "DatabaseConfig":
-        """Build configuration from environment variables, with defaults."""
+        """Build configuration from environment variables (incl. a .env file)."""
         return cls(
             name=os.getenv("POSTGRES_DB", cls.name),
             user=os.getenv("POSTGRES_USER", cls.user),
@@ -47,7 +51,7 @@ class DatabaseConnection(ABC):
 class PostgresConnection(DatabaseConnection):
     """PostgreSQL implementation of DatabaseConnection."""
 
-    def __init__(self, config: DatabaseConfig = None) -> None: # type: ignore
+    def __init__(self, config: DatabaseConfig | None = None) -> None:
         self._config = config or DatabaseConfig.from_env()
         self._connection = None
 
