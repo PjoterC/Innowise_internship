@@ -6,21 +6,19 @@
 -- tree, per plant and year, with quantities summed over the year. Shared
 -- sub-assemblies appear once under every FIN that uses them (top-down walk),
 -- and the FIN itself never appears as a produced material (the walk starts
--- below it, at its PROD twin).
+-- below it, at its PROD sub).
 -- ============================================================================
 
 CREATE VIEW bom_explosion AS
 WITH RECURSIVE
--- Every material ID that is produced somewhere (the "is it produced?" test,
--- equivalent to get_produced_materials()).
+
 produced AS (
     SELECT DISTINCT produced_material AS material_id
     FROM bom_data
 ),
--- Map each FIN to every produced material in its sub-tree, per plant
--- (equivalent to explode_fin() + explode_material_tree()).
+
 fin_tree AS (
-    -- Anchor: start below each FIN, at its PROD twin (the FIN's own component),
+    -- Anchor: start below each FIN, at its PROD sub (the FIN's own component),
     -- but only if that component is itself a produced material.
     SELECT DISTINCT
         b.plant_id,
@@ -52,8 +50,7 @@ fin_material AS (
     FROM fin_tree
 ),
 -- FIN production quantity, summed per plant/year. Deduplicate to one row per
--- month first, because the FIN quantity is repeated across the FIN's component
--- rows (equivalent to the drop_duplicates() in get_fin_attributes()).
+-- month first, because the FIN quantity is repeated across the FIN's component rows
 fin_quantity AS (
     SELECT plant_id, fin_id, year, SUM(q) AS fin_production_quantity
     FROM (
@@ -120,4 +117,6 @@ ORDER BY
     fm.plant_id, fm.fin_id, b.produced_material, b.component_material, b.year;
 
 
+
+-- SELECT for checking the view
 SELECT * FROM bom_explosion LIMIT 500;
