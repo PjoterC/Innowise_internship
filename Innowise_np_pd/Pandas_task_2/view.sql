@@ -1,7 +1,6 @@
 -- ============================================================================
 -- BoM explosion view  (PostgreSQL dialect, uses a recursive CTE)
 --
--- SQL equivalent of build_bom_explosion() in analyzer.ipynb.
 -- One output row = one (material -> component) edge inside a FIN's production
 -- tree, per plant and year, with quantities summed over the year. Shared
 -- sub-assemblies appear once under every FIN that uses them (top-down walk),
@@ -49,8 +48,7 @@ fin_material AS (
     SELECT DISTINCT plant_id, fin_id, material_id
     FROM fin_tree
 ),
--- FIN production quantity, summed per plant/year. Deduplicate to one row per
--- month first, because the FIN quantity is repeated across the FIN's component rows
+-- FIN production quantity, summed per plant/year.
 fin_quantity AS (
     SELECT plant_id, fin_id, year, SUM(q) AS fin_production_quantity
     FROM (
@@ -76,8 +74,7 @@ fin_attr AS (
     WHERE produced_material_release_type = 'FIN'
 )
 -- Attach each mapped material's own component edges, tag with the FIN, and sum
--- the produced/consumption quantities over the year (equivalent to
--- sum_quantities_yearly()).
+-- the produced/consumption quantities over the year
 SELECT
     fm.plant_id                           AS plant,
     fm.fin_id                             AS fin_material_id,
@@ -95,11 +92,11 @@ SELECT
     b.year
 FROM fin_material fm
 JOIN bom_data b
-  ON b.produced_material = fm.material_id
- AND b.plant_id          = fm.plant_id
-JOIN fin_attr     fa ON fa.plant_id = fm.plant_id AND fa.fin_id = fm.fin_id
-JOIN fin_quantity fq ON fq.plant_id = fm.plant_id AND fq.fin_id = fm.fin_id
-                    AND fq.year     = b.year
+ON b.produced_material = fm.material_id AND b.plant_id = fm.plant_id
+JOIN fin_attr fa 
+ON fa.plant_id = fm.plant_id AND fa.fin_id = fm.fin_id
+JOIN fin_quantity fq 
+ON fq.plant_id = fm.plant_id AND fq.fin_id = fm.fin_id AND fq.year = b.year
 GROUP BY
     fm.plant_id,
     fm.fin_id,
