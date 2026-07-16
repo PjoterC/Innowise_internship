@@ -63,8 +63,8 @@ WHERE movie_amount IN (
 --Output cities with the number of active and inactive customers 
 --(active - customer.active = 1). Sort by the number of inactive customers in descending order.
 SELECT c.city, 
-SUM(CASE WHEN cus.activebool THEN 1 ELSE 0 END) AS active_customers, 
-SUM(CASE WHEN NOT cus.activebool THEN 1 ELSE 0 END) AS inactive_customers
+SUM(CASE WHEN cus.active = 1 THEN 1 ELSE 0 END) AS active_customers, 
+SUM(CASE WHEN cus.active = 0 THEN 1 ELSE 0 END) AS inactive_customers
 FROM city c
 JOIN address a ON c.city_id = a.city_id
 JOIN customer cus ON a.address_id = cus.address_id
