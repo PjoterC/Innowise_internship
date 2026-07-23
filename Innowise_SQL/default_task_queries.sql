@@ -86,7 +86,7 @@ ORDER BY inactive_customers DESC;
     JOIN customer cus ON r.customer_id  = cus.customer_id
     JOIN address a ON cus.address_id = a.address_id
     JOIN city ci ON a.city_id = ci.city_id
-    WHERE ci.city ILIKE 'a%'
+    WHERE f.title ILIKE 'a%'
     GROUP BY ca.name
     ORDER BY rental_hours DESC
     LIMIT 1
