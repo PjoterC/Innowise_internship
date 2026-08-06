@@ -1,0 +1,4 @@
+# Versions are deliberately unpinned — the Airflow 3.3.0 constraints file
+# referenced in the Dockerfile decides them. Pinning here fights the constraints.
+pandas
+apache-airflow-providers-mongo
