@@ -25,6 +25,8 @@ x-airflow-common: &airflow-common
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
     - ./config:/opt/airflow/config
+    - ./data:/opt/airflow/data
+    - ./scripts:/opt/airflow/scripts
   user: "${AIRFLOW_UID:-50000}:0"
 
 services:
@@ -40,7 +42,7 @@ services:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 5s
       retries: 5
-    restart: always
+    restart: "no"
 
   mongodb:
     image: mongo:7
@@ -51,16 +53,19 @@ services:
       - "27017:27017"
     volumes:
       - mongo-db-volume:/data/db
-    restart: always
+    restart: "no"
 
   # Runs once and exits. No user creation needed: SimpleAuthManager has no
   # user table, so `airflow users create` (the 2.x step) is gone.
+  # Uses the image's built-in _AIRFLOW_DB_MIGRATE hook instead of an
+  # `entrypoint: /bin/bash` override: overriding entrypoint skips the image's
+  # own /entrypoint script, which is what maps AIRFLOW_UID to HOME=/home/airflow.
+  # Without it HOME defaults to "/" and `airflow` can't find its own package.
   airflow-init:
     <<: *airflow-common
-    entrypoint: /bin/bash
-    command:
-      - -c
-      - airflow db migrate
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,7 +76,7 @@ services:
     command: api-server
     ports:
       - "8080:8080"
-    restart: always
+    restart: "no"
     depends_on: &airflow-common-depends-on
       postgres:
         condition: service_healthy
@@ -83,7 +88,7 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
-    restart: always
+    restart: "no"
     depends_on: *airflow-common-depends-on
 
   # Airflow 3 parses DAG files in a standalone process — the scheduler no
@@ -91,13 +96,13 @@ services:
   airflow-dag-processor:
     <<: *airflow-common
     command: dag-processor
-    restart: always
+    restart: "no"
     depends_on: *airflow-common-depends-on
 
   airflow-triggerer:
     <<: *airflow-common
     command: triggerer
-    restart: always
+    restart: "no"
     depends_on: *airflow-common-depends-on
 
 volumes:
