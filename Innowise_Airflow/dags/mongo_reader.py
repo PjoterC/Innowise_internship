@@ -1,27 +1,30 @@
 from datetime import datetime
 
 import pandas as pd
-from airflow.sdk import PokeReturnValue, dag, task, task_group
+from airflow.sdk import Metadata, PokeReturnValue, dag, task, task_group
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.mongo.hooks.mongo import MongoHook
 from pathlib import Path
 import re
 import string
 
+from assets import cleaned_reviews
+
+
+
 @dag(
     dag_id="mongo_reader",
     schedule="@daily",
     start_date=datetime(2026, 1, 1),
     catchup=False,
-    tags=["pandas", "mongodb"],
+    tags=["pandas", "mongodb"]
 )
 def mongo_reader():
 
     @task.sensor(poke_interval=30, timeout=300, mode="reschedule")
     def wait_for_file() -> PokeReturnValue:
         data_dir = Path("/opt/airflow/data")
-        # Only real CSVs: WSL leaves ":Zone.Identifier" sidecar files next to
-        # anything downloaded through Windows, and they list first in iterdir().
+        # Only real CSVs
         found = next((p for p in sorted(data_dir.glob("*.csv")) if p.is_file()), None)
         return PokeReturnValue(is_done=found is not None, xcom_value=str(found) if found else None)
 
@@ -57,14 +60,15 @@ def mongo_reader():
             df.to_csv(file_path, index=False)
             return file_path
 
-        @task
-        def remove_unnecessary_chars(file_path: str) -> str:
+        
+        @task(outlets=[cleaned_reviews])
+        def remove_unnecessary_chars(file_path: str):
             df = pd.read_csv(file_path)
             df['content'] = df['content'].replace(
                 f"[^\\w\\s{re.escape(string.punctuation)}]", "", regex=True
             )
             df.to_csv(file_path, index=False)
-            return file_path
+            yield Metadata(cleaned_reviews, {"path": file_path, "rows": len(df)})
 
         remove_unnecessary_chars(sort_data(replace_nulls(file_path)))
 
