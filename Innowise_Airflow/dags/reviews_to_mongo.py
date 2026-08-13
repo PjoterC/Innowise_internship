@@ -14,11 +14,8 @@ BATCH_SIZE = 1000
 
 
 def _resolve_source_path(context) -> str:
-    """Path of the CSV that triggered this run.
-
-    Asset-scheduled runs carry it in the event `extra` written by the producer.
-    Manual runs have no triggering event, so fall back to the same glob the
-    producer's sensor uses — that keeps the DAG runnable on its own for testing.
+    """
+    Path of the CSV that triggered this run.
     """
     events = context["triggering_asset_events"][cleaned_reviews]
     path = next(
