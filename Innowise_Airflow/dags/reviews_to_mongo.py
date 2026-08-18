@@ -33,10 +33,7 @@ def _resolve_source_path(context) -> str:
 
 @dag(
     dag_id="reviews_to_mongo",
-    # Asset-aware scheduling: no cron at all. This DAG runs when `mongo_reader`
-    # marks `cleaned_reviews` updated. For "on update *and* daily", swap this for
-    # AssetOrTimeSchedule(timetable=CronTriggerTimetable("@daily", timezone="UTC"),
-    #                     assets=[cleaned_reviews]).
+    # This DAG runs when `file_processor` marks `cleaned_reviews` updated.
     schedule=[cleaned_reviews],
     start_date=datetime(2026, 1, 1),
     catchup=False,
@@ -57,7 +54,10 @@ def reviews_to_mongo():
         # truth each run: replace the collection instead of appending duplicates.
         collection.drop()
 
-        records = df.to_dict(orient="records")
+        # A missing numeric value arrives as NaN, which pymongo would store as
+        # a NaN double: $avg over it returns NaN and `{field: null}` never
+        # matches. Store a real null instead.
+        records = df.astype(object).where(pd.notna(df), None).to_dict(orient="records")
         for start in range(0, len(records), BATCH_SIZE):
             collection.insert_many(records[start:start + BATCH_SIZE])
         return len(records)

@@ -13,13 +13,13 @@ from assets import cleaned_reviews
 
 
 @dag(
-    dag_id="mongo_reader",
+    dag_id="file_processor",
     schedule="@daily",
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=["pandas", "mongodb"]
 )
-def mongo_reader():
+def file_processor():
 
     @task.sensor(poke_interval=30, timeout=300, mode="reschedule")
     def wait_for_file() -> PokeReturnValue:
@@ -32,7 +32,11 @@ def mongo_reader():
 
     @task.branch
     def file_emptiness_check(file_path: str) -> str:
-        return "log_empty" if Path(file_path).stat().st_size == 0 else "data_processing.replace_nulls"
+        try:
+            has_rows = not pd.read_csv(file_path, nrows=1).empty
+        except pd.errors.EmptyDataError:
+            has_rows = False
+        return "data_processing.replace_nulls" if has_rows else "log_empty"
 
     log_empty = BashOperator(
         task_id="log_empty",
@@ -47,16 +51,26 @@ def mongo_reader():
         @task
         def replace_nulls(file_path: str) -> str:
             df = pd.read_csv(file_path)
-            df = df.fillna("-")
-            
+            # "-" is a text placeholder, so only text columns get it. Filling it
+            # into a numeric column would flip that column to object dtype and
+            # land strings in Mongo, breaking the $avg query downstream. Numeric
+            # columns keep NaN and are written out as empty cells instead.
+            text_cols = df.select_dtypes(include=["object", "string"]).columns
+            df[text_cols] = df[text_cols].fillna("-")
             df.to_csv(file_path, index=False)
             return file_path
 
         @task
         def sort_data(file_path: str) -> str:
             df = pd.read_csv(file_path)
-            df["at"] = pd.to_datetime(df["at"])
-            df = df.sort_values(by="at", ascending=True)
+            # `replace_nulls` leaves "-" where a date was missing, which
+            # to_datetime cannot parse. Coerce those to NaT rather than failing
+            # the task, sort them to the end, and put the placeholder back so
+            # the column stays consistent with every other text column.
+            parsed = pd.to_datetime(df["at"], errors="coerce")
+            df = df.assign(_sort_key=parsed).sort_values("_sort_key", na_position="last")
+            df["at"] = df["_sort_key"].dt.strftime("%Y-%m-%d %H:%M:%S").fillna("-")
+            df = df.drop(columns="_sort_key")
             df.to_csv(file_path, index=False)
             return file_path
 
@@ -77,4 +91,4 @@ def mongo_reader():
     branch >> [log_empty, process_data(file_path)]
 
 
-mongo_reader()
+file_processor()
