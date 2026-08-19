@@ -59,8 +59,7 @@ pick its own output back up as new input. Writing that file updates the
    docker compose up -d
    ```
 
-5. Open the Airflow UI: http://localhost:8080 — no login required, see
-   [Authentication](#authentication) below.
+5. Open the Airflow UI: http://localhost:8080 — no login required.
 
 6. MongoDB is reachable at `localhost:27017` (user `mongo`, password `mongo`) from your host machine, e.g. with `mongosh` or Compass:
    ```
@@ -80,6 +79,15 @@ from airflow.providers.mongo.hooks.mongo import MongoHook
 hook = MongoHook(mongo_conn_id="mongo_default")
 client = hook.get_conn()
 ```
+
+
+## Running the DAGs
+
+To run the DAGs for the first time, enable them in the Airflow UI, running under *http://localhost:8080/dags*.
+File processor's schedule is set to daily, but you can run it manually. The DAG handling the database update - `reviews_to_mongo`
+runs after a successful read of a non-empty file by the first DAG. Put the processed data directly in the `data/`directory.
+
+
 
 ## Stopping / resetting
 ```bash

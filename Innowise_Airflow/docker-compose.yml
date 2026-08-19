@@ -14,10 +14,8 @@ x-airflow-common: &airflow-common
     # SimpleAuthManager is the 3.x default; all_admins drops the login screen.
     # Local development only — never do this on anything reachable.
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: 'True'
-    # Connection your DAGs use to reach MongoDB, registered as `mongo_default`.
-    # Given as JSON rather than a URI on purpose: MongoHook rejects any conn_type
-    # but "mongo", and a `mongodb://...` URI parses its scheme as the conn_type,
-    # so the natural-looking connection string fails validation.
+    
+    # Default database connection
     AIRFLOW_CONN_MONGO_DEFAULT: '{"conn_type": "mongo", "host": "mongodb", "port": 27017,
       "login": "mongo", "password": "mongo", "extra": {"authSource": "admin"}}'
   volumes:
@@ -55,8 +53,7 @@ services:
       - mongo-db-volume:/data/db
     restart: "no"
 
-  # Runs once and exits. No user creation needed: SimpleAuthManager has no
-  # user table, so `airflow users create` (the 2.x step) is gone.
+ 
   # Uses the image's built-in _AIRFLOW_DB_MIGRATE hook instead of an
   # `entrypoint: /bin/bash` override: overriding entrypoint skips the image's
   # own /entrypoint script, which is what maps AIRFLOW_UID to HOME=/home/airflow.
