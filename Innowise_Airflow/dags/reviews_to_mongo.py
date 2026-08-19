@@ -1,34 +1,15 @@
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 from airflow.sdk import dag, task
 from airflow.providers.mongo.hooks.mongo import MongoHook
 
-from assets import cleaned_reviews
+from assets import CLEANED_REVIEWS_PATH, cleaned_reviews
 
 DB_NAME = "reviews_db"
 COLLECTION_NAME = "reviews"
 # Mongo caps a single command at 16 MB; batch rather than one insert_many.
 BATCH_SIZE = 1000
-
-
-def _resolve_source_path(context) -> str:
-    """
-    Path of the CSV that triggered this run.
-    """
-    events = context["triggering_asset_events"][cleaned_reviews]
-    path = next(
-        (event.extra["path"] for event in reversed(events) if event.extra.get("path")),
-        None,
-    )
-    if path is not None:
-        return path
-
-    found = next((p for p in sorted(Path("/opt/airflow/data").glob("*.csv")) if p.is_file()), None)
-    if found is None:
-        raise FileNotFoundError("No triggering asset event and no CSV in /opt/airflow/data")
-    return str(found)
 
 
 @dag(
@@ -43,15 +24,14 @@ def reviews_to_mongo():
 
     
     @task(inlets=[cleaned_reviews])
-    def load_to_mongo(**context) -> int:
-        source_path = _resolve_source_path(context)
-        df = pd.read_csv(source_path)
-        print(f"Loading {len(df)} rows from {source_path}")
+    def load_to_mongo() -> int:
+        df = pd.read_csv(CLEANED_REVIEWS_PATH)
+        print(f"Loading {len(df)} rows from {CLEANED_REVIEWS_PATH}")
 
         hook = MongoHook(mongo_conn_id="mongo_default")
         collection = hook.get_conn()[DB_NAME][COLLECTION_NAME]
-        # The producer rewrites the whole CSV in place, so the file is the full
-        # truth each run: replace the collection instead of appending duplicates.
+
+        # Replace collection instead of appending (not specified in requirements)
         collection.drop()
 
         # A missing numeric value arrives as NaN, which pymongo would store as

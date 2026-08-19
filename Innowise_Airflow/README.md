@@ -12,7 +12,12 @@ database, MongoDB as the target the example DAG writes to.
 ```
 .
 ├── dags/                     # your Airflow DAGs go here
-│   └── pandas_mongo_example.py
+│   ├── assets.py             # the Asset shared by the two DAGs, + the paths it implies
+│   ├── file_processor.py     # sensor -> emptiness branch -> transform TaskGroup
+│   └── reviews_to_mongo.py   # asset-triggered loader
+├── data/                     # drop input CSVs here; never written to
+│   └── processed/            # cleaned_reviews.csv, regenerated on every run
+├── scripts/                  # bash helpers called by the DAGs
 ├── logs/                     # Airflow logs (auto-created)
 ├── plugins/                  # custom Airflow plugins (optional)
 ├── config/                   # optional airflow.cfg overrides
@@ -21,6 +26,14 @@ database, MongoDB as the target the example DAG writes to.
 ├── docker-compose.yml        # api-server / scheduler / dag-processor / triggerer + Postgres + MongoDB
 └── README.md
 ```
+
+## Data flow
+`file_processor` reads whatever CSV it finds in `data/` and writes its result to
+`data/processed/cleaned_reviews.csv` — the input is only ever read, so a re-run
+always starts from the same bytes. The output subdirectory is deliberately not a
+sibling of the input: the sensor's `*.csv` glob is non-recursive, so it cannot
+pick its own output back up as new input. Writing that file updates the
+`cleaned_reviews` asset, which triggers `reviews_to_mongo`.
 
 ## First-time setup
 

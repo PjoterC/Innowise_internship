@@ -4,13 +4,20 @@ Kept out of the DAG files themselves so a consumer can import an asset without
 importing (and therefore executing) the producer's module.
 """
 
+from pathlib import Path
+
 from airflow.sdk import Asset
 
-# The cleaned review CSV produced by `mongo_reader`. The URI is only an
-# identifier — Airflow never opens it. The concrete file the run touched is
-# passed along in the asset event's `extra`, since the producer discovers the
-# path by globbing and it is not known statically.
+# Where `file_processor` looks for input.
+RAW_DIR = Path("/opt/airflow/data")
+
+# Where `file_processor` writes its result and `reviews_to_mongo` reads it from.
+# A subdirectory rather than a sibling file, so the sensor
+# can never pick the output back up as new input.
+CLEANED_REVIEWS_PATH = RAW_DIR / "processed" / "cleaned_reviews.csv"
+
+# The cleaned review CSV produced by `file_processor`.
 cleaned_reviews = Asset(
     name="cleaned_reviews",
-    uri="file:///opt/airflow/data/cleaned_reviews.csv",
+    uri=CLEANED_REVIEWS_PATH.as_uri(),
 )
