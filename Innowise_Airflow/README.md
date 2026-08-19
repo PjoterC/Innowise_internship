@@ -94,3 +94,7 @@ runs after a successful read of a non-empty file by the first DAG. Put the proce
 docker compose down          # stop containers, keep data
 docker compose down -v       # stop containers AND wipe volumes (fresh start)
 ```
+
+## DAG visualized
+
+![Alt text](file_processor-graph.png "Graph")
