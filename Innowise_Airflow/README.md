@@ -1,7 +1,7 @@
 # Airflow + Pandas + MongoDB environment
 
 Apache Airflow **3.3.0** (Task SDK DAG authoring), Postgres as the metadata
-database, MongoDB as the target the example DAG writes to.
+database, MongoDB as the target the `reviews_to_mongo` DAG writes to.
 
 ## Prerequisites
 - Docker Desktop (or Docker Engine + Docker Compose v2) installed
