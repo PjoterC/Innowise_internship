@@ -37,8 +37,14 @@ pick its own output back up as new input. Writing that file updates the
 
 ## First-time setup
 
+1. On Linux, set the Airflow user ID so file permissions on the mounted
+   `logs/` directory match your host user:
+   ```bash
+   echo -e "AIRFLOW_UID=$(id -u)" > .env
+   ```
+   (On macOS/Windows with Docker Desktop you can skip this — it's harmless either way.)
 
-1. Build the custom image (installs pandas and the Airflow MongoDB provider):
+2. Build the custom image (installs pandas and the Airflow MongoDB provider):
    ```bash
    docker compose build
    ```
