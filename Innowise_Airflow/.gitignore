@@ -1,3 +1,6 @@
-logs/
-.env
+logs/*
+!logs/.gitkeep
 simple_auth_manager_passwords.json.generated
+__pycache__/
+data/*
+!data/.gitkeep
