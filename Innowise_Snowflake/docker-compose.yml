@@ -1,0 +1,121 @@
+# Values written as ${SNOWFLAKE_*} are substituted by docker compose from the
+# `.env` file sitting next to this one — so credentials are entered once, in
+# .env, and both check_connection.py and Airflow read the same account.
+x-airflow-common: &airflow-common
+  build: .
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__FERNET_KEY: 'D5RsviWFPGWY5R_yNMQ1QLk_nCfyPQ1owDPoLNPz88Q='
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    # Airflow 3: tasks run through the Task SDK and call back into the API server.
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
+    # Must be identical in every component that mints or validates a task JWT
+    # (scheduler signs, api-server verifies) — a mismatch fails every task run.
+    AIRFLOW__API_AUTH__JWT_SECRET: 'local-dev-only-jwt-secret'
+    # SimpleAuthManager is the 3.x default; all_admins drops the login screen.
+    # Local development only — never do this on anything reachable.
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: 'True'
+
+    # Registers the Airflow connection `snowflake_default` at container start,
+    # so no connection has to be clicked into the UI and no credential is
+    # written to the metadata database.
+    #
+    # Two things about this mapping are the provider's rules, not choices:
+    #  * the `password` field is overloaded three ways — it carries a plain
+    #    password, OR the private key's passphrase under key-pair auth, OR the
+    #    PAT itself, which substitutes for a password and so keeps the
+    #    ordinary "snowflake" authenticator. Only one .env block is filled in,
+    #    and the fallback chain picks the most specific one;
+    #  * `authenticator` must never be an empty string: the connector reads
+    #    that as a request for an SSO handshake and stops sending credentials,
+    #    which is why it defaults to "snowflake" rather than to blank;
+    #  * the key path is rewritten to the container's mount point, so
+    #    secrets/foo.p8 on the host resolves to /opt/airflow/secrets/foo.p8.
+    # Unused fields stay empty strings; the hook treats those as unset.
+    AIRFLOW_CONN_SNOWFLAKE_DEFAULT: '{"conn_type": "snowflake",
+      "login": "${SNOWFLAKE_USER:-}",
+      "password": "${SNOWFLAKE_PAT:-${SNOWFLAKE_PRIVATE_KEY_PASSPHRASE:-${SNOWFLAKE_PASSWORD:-}}}",
+      "schema": "${SNOWFLAKE_SCHEMA:-}",
+      "extra": {"account": "${SNOWFLAKE_ACCOUNT:-}",
+      "authenticator": "${SNOWFLAKE_AUTHENTICATOR:-snowflake}",
+      "warehouse": "${SNOWFLAKE_WAREHOUSE:-}",
+      "database": "${SNOWFLAKE_DATABASE:-}",
+      "role": "${SNOWFLAKE_ROLE:-}",
+      "private_key_file": "${SNOWFLAKE_PRIVATE_KEY_PATH:+/opt/airflow/}${SNOWFLAKE_PRIVATE_KEY_PATH:-}"}}'
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - ./config:/opt/airflow/config
+    - ./sql:/opt/airflow/sql
+    # The source CSV the ingest DAG PUTs onto the Snowflake stage.
+    - ./data:/opt/airflow/data:ro
+    # Read-only: a task has no business rewriting the private key.
+    - ./secrets:/opt/airflow/secrets:ro
+  user: "${AIRFLOW_UID:-50000}:0"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: "no"
+
+  # Uses the image's built-in _AIRFLOW_DB_MIGRATE hook instead of an
+  # `entrypoint: /bin/bash` override: overriding entrypoint skips the image's
+  # own /entrypoint script, which is what maps AIRFLOW_UID to HOME=/home/airflow.
+  # Without it HOME defaults to "/" and `airflow` can't find its own package.
+  airflow-init:
+    <<: *airflow-common
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "8080:8080"
+    restart: "no"
+    depends_on: &airflow-common-depends-on
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: "no"
+    depends_on: *airflow-common-depends-on
+
+  # Airflow 3 parses DAG files in a standalone process — the scheduler no
+  # longer does it, so without this service no DAG ever appears.
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    restart: "no"
+    depends_on: *airflow-common-depends-on
+
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    restart: "no"
+    depends_on: *airflow-common-depends-on
+
+volumes:
+  postgres-db-volume:
