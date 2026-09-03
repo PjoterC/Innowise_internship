@@ -99,9 +99,6 @@ CREATE TABLE IF NOT EXISTS CORE.FCT_FLIGHT_BOOKING (
 );
 
 -- Not append-only, unlike the RAW streams: the fact is loaded by MERGE, so a
--- correction arrives as an update and MART has to recompute that cell. A
--- standard stream reports the update as a delete/insert pair, which is exactly
--- the signal the aggregate loader needs. No SHOW_INITIAL_ROWS, for the reason
--- spelled out over the RAW streams in 02_raw_layer.sql.
+-- correction arrives as an update and MART has to recompute that cell.
 CREATE STREAM IF NOT EXISTS CORE.STRM_FCT_BOOKING_MART
     ON TABLE CORE.FCT_FLIGHT_BOOKING;

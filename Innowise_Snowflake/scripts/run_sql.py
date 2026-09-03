@@ -65,7 +65,7 @@ def run_file(cursor, path: Path, quiet: bool) -> None:
         # history, which matters when the audit log stores query ids.
         statements = list(split_statements(handle, remove_comments=False))
 
-    for statement, _is_put in statements:
+    for statement, is_put in statements:
         text = statement.strip()
         if not text or text == ";":
             continue
@@ -77,8 +77,23 @@ def run_file(cursor, path: Path, quiet: bool) -> None:
                 for line in text.splitlines()
                 if line.strip() and not line.strip().startswith("--")
             ),
-            text[:70],
+            "",
         )
+        # No non-comment line at all: a comment block after the last semicolon
+        # comes back as its own statement, and Snowflake answers a comment with
+        # "Empty SQL statement". Nothing to run, so nothing to send.
+        if not label:
+            continue
+        # PUT and GET are the exception to remove_comments=False: the server
+        # rejects a file-transfer command that starts with a comment, with
+        # "Unsupported feature 'unsupported_requested_format:snowflake'" —
+        # which names neither the comment nor the PUT. Every other statement
+        # keeps its comments and stays readable in the query history.
+        if is_put:
+            lines = text.splitlines()
+            while lines and (not lines[0].strip() or lines[0].strip().startswith("--")):
+                lines.pop(0)
+            text = "\n".join(lines)
         print(f"  -> {label[:100]}")
         cursor.execute(text)
         if not quiet:

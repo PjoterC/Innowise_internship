@@ -34,12 +34,8 @@ CREATE TABLE IF NOT EXISTS MART.AGG_FLIGHT_STATUS_DAILY (
 --   first-class object: it can be attached to a second view or to the base
 --   table without being rewritten, and SHOW / POLICY_REFERENCES can list
 --   everywhere it applies.
---
--- Attached to the view rather than to CORE.FCT_FLIGHT_BOOKING on purpose. A
--- policy on the fact table would also apply to the pipeline's own reads — the
--- stream, and the aggregate procedure that drains it — so the loader's role
--- would have to be granted every continent just to do its job. The consumer
--- surface is the right place to enforce a consumer rule.
+
+
 CREATE OR REPLACE SECURE VIEW MART.V_FLIGHT_BOOKING_SECURE
     COMMENT = 'The fact, denormalised. Guarded by META.RAP_CONTINENT.'
 AS

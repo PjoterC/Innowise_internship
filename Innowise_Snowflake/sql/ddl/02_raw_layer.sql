@@ -52,13 +52,8 @@ CREATE TABLE IF NOT EXISTS RAW.AIRLINE_RAW (
     BATCH_ID             VARCHAR       NOT NULL
 );
 
--- One stream per consumer, and this is the part that is easy to get wrong: a
--- stream is a cursor, and the first DML that reads it advances it. Four
--- consumers sharing one stream would mean three of them see nothing. Separate
--- streams also mean a failed step can be retried without starving the others.
---
+-- One stream per consumer, since stream is a cursor.
 -- APPEND_ONLY because RAW is insert-only.
---
 -- The streams are always created before any load.
 CREATE STREAM IF NOT EXISTS RAW.STRM_AIRLINE_RAW_DIM_PASSENGER
     ON TABLE RAW.AIRLINE_RAW APPEND_ONLY = TRUE;

@@ -17,8 +17,7 @@ CREATE ROLE IF NOT EXISTS DWH_ADMIN        COMMENT = 'Pipeline owner — every c
 CREATE ROLE IF NOT EXISTS DWH_ANALYST_EU   COMMENT = 'Europe desk.';
 CREATE ROLE IF NOT EXISTS DWH_ANALYST_NAM  COMMENT = 'North America desk.';
 
--- Without warehouse USAGE the roles can see object names but not run a query,
--- which looks like a bug rather than a missing grant.
+-- Without warehouse USAGE the roles can see object names but not run a query.
 GRANT USAGE ON WAREHOUSE IDENTIFIER($wh_name) TO ROLE DWH_ADMIN;
 GRANT USAGE ON WAREHOUSE IDENTIFIER($wh_name) TO ROLE DWH_ANALYST_EU;
 GRANT USAGE ON WAREHOUSE IDENTIFIER($wh_name) TO ROLE DWH_ANALYST_NAM;
@@ -31,8 +30,7 @@ GRANT USAGE ON SCHEMA MART TO ROLE DWH_ADMIN;
 GRANT USAGE ON SCHEMA MART TO ROLE DWH_ANALYST_EU;
 GRANT USAGE ON SCHEMA MART TO ROLE DWH_ANALYST_NAM;
 
--- The secure view, and nothing else. Note the absence of GRANT SELECT ON ALL
--- TABLES anywhere in this file.
+-- The secure view, and nothing else.
 GRANT SELECT ON VIEW MART.V_FLIGHT_BOOKING_SECURE TO ROLE DWH_ADMIN;
 GRANT SELECT ON VIEW MART.V_FLIGHT_BOOKING_SECURE TO ROLE DWH_ANALYST_EU;
 GRANT SELECT ON VIEW MART.V_FLIGHT_BOOKING_SECURE TO ROLE DWH_ANALYST_NAM;
