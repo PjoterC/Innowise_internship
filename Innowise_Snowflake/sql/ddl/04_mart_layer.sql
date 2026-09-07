@@ -24,14 +24,10 @@ CREATE TABLE IF NOT EXISTS MART.AGG_FLIGHT_STATUS_DAILY (
 -- ---------------------------------------------------------------------------
 -- Two separate mechanisms, doing two different jobs:
 --
---   SECURE hides the view's definition from anyone who is not its owner, and
---   stops the optimiser pushing a user-supplied predicate below the view's own
---   filters — which is how a cleverly written WHERE clause can otherwise infer
---   rows it was never shown. It costs some optimisations; that is the price.
+--   SECURE hides the view's definition from anyone who is not its owner.
 --
 --   The ROW ACCESS POLICY does the filtering, declared once in META and
---   attached below. Keeping it out of the view body means the rule is a
---   first-class object: it can be attached to a second view or to the base
+--   attached below. It can be attached to a second view or to the base
 --   table without being rewritten, and SHOW / POLICY_REFERENCES can list
 --   everywhere it applies.
 

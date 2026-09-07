@@ -45,16 +45,7 @@ SET update_qid = LAST_QUERY_ID();
 
 SELECT COUNT(*) AS japanese_after_update FROM CORE.DIM_PASSENGER WHERE NATIONALITY = 'Japan';
 
--- The repair, and the first of the two Time Travel DML statements: join the
--- table to itself as it stood immediately before that UPDATE, and put the old
--- value back.
---
--- A restore is a join, not a rewind — which is the point. There is no statement
--- that undoes a statement; there is a readable earlier version of the table that
--- ordinary DML can read like any other source. The predicate keeps it to rows
--- whose value actually differs, so re-running this file is a no-op rather than a
--- second round of writes, and DWH_UPDATED_AT is refreshed because the row really
--- did change again.
+
 UPDATE CORE.DIM_PASSENGER t
    SET NATIONALITY    = b.NATIONALITY,
        DWH_UPDATED_AT = CURRENT_TIMESTAMP()
