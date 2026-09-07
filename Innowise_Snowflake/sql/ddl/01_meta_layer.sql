@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS META.ETL_AUDIT_LOG (
     OPERATION      VARCHAR(20)   NOT NULL,   -- COPY | MERGE
     ROWS_INSERTED  NUMBER(38,0)  DEFAULT 0,
     ROWS_UPDATED   NUMBER(38,0)  DEFAULT 0,
+    -- The mart loader removes aggregate cells that fall to zero rows, so
+    -- "affected rows" is three numbers here, not two. Every other step logs 0.
+    ROWS_DELETED   NUMBER(38,0)  DEFAULT 0,
     STARTED_AT     TIMESTAMP_LTZ NOT NULL,
     FINISHED_AT    TIMESTAMP_LTZ NOT NULL,
     DURATION_SEC   NUMBER(18,3),
@@ -52,10 +55,7 @@ WHEN NOT MATCHED THEN INSERT (ROLE_NAME, CONTINENT_CODE) VALUES (s.ROLE_NAME, s.
 -- grant at all on META — they cannot read the table that decides what they can
 -- read. CURRENT_ROLE() is the caller's role, which is what makes one policy
 -- give three different answers.
---
--- IF NOT EXISTS rather than OR REPLACE: Snowflake refuses to replace a policy
--- that is attached to anything, so a redeploy would fail on the second run.
--- Change the rule with ALTER ROW ACCESS POLICY META.RAP_CONTINENT SET BODY -> ...
+
 CREATE ROW ACCESS POLICY IF NOT EXISTS META.RAP_CONTINENT
     AS (continent_code VARCHAR) RETURNS BOOLEAN ->
         EXISTS (

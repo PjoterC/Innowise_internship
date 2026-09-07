@@ -55,12 +55,12 @@ BEGIN
       INTO :V_INS, :V_UPD FROM TABLE(RESULT_SCAN(:V_QID));
 
     CALL META.SP_WRITE_AUDIT(:P_RUN_ID, 'dwh_pipeline', 'CORE.DIM_AIRPORT', 'MERGE',
-                             :V_INS, :V_UPD, :V_STARTED, 'SUCCESS', NULL, :V_QID);
+                             :V_INS, :V_UPD, 0, :V_STARTED, 'SUCCESS', NULL, :V_QID);
     RETURN 'inserted=' || V_INS || ' updated=' || V_UPD;
 EXCEPTION
     WHEN OTHER THEN
         CALL META.SP_WRITE_AUDIT(:P_RUN_ID, 'dwh_pipeline', 'CORE.DIM_AIRPORT', 'MERGE',
-                                 0, 0, :V_STARTED, 'FAILED', SQLERRM, NULL);
+                                 0, 0, 0, :V_STARTED, 'FAILED', SQLERRM, NULL);
         RAISE;
 END;
 $$;

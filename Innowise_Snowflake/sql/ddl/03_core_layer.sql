@@ -50,8 +50,19 @@ CREATE TABLE IF NOT EXISTS CORE.DIM_AIRPORT (
     CONSTRAINT PK_DIM_AIRPORT PRIMARY KEY (AIRPORT_KEY)
 );
 
--- Densified from the dates actually present in RAW rather than pre-generated
--- for a 50-year range: the source covers one year.
+-- Static reference data, seeded below rather than loaded by the pipeline:
+-- every column is a pure function of FULL_DATE, so there is nothing for a
+-- stream to carry and nothing a MERGE could ever update.
+--
+-- Pre-generated over a fixed range, not densified from the dates seen in RAW.
+-- That is what lets a report show days with *zero* bookings, and it leaves the
+-- obvious slot for a holiday flag or a fiscal calendar — the attributes that
+-- are NOT derivable from a date, and the real reason this table exists.
+--
+-- The cost: coverage is an assumption now, not a guarantee. MART joins this
+-- table INNER (04_mart_layer.sql, 16_sp_load_mart_flight_status_daily.sql), so
+-- a booking dated outside the range would vanish silently. The range is far
+-- wider than the data (all 2022); audit_report.sql asserts nothing falls out.
 CREATE TABLE IF NOT EXISTS CORE.DIM_DATE (
     DATE_KEY        NUMBER(8,0)   NOT NULL,   -- YYYYMMDD, -1 = unknown
     FULL_DATE       DATE,
@@ -73,13 +84,45 @@ USING (SELECT -1 AS DATE_KEY) s ON t.DATE_KEY = s.DATE_KEY
 WHEN NOT MATCHED THEN INSERT (DATE_KEY, DAY_NAME, MONTH_NAME, DWH_INSERTED_AT)
                       VALUES (-1, 'Unknown', 'Unknown', CURRENT_TIMESTAMP());
 
--- Natural key is the source file's own row index: stable across reloads of the
--- same file, which is what makes the MERGE idempotent. The IS_* flags are
--- additive so MART can SUM them; FLIGHT_STATUS is kept because the string is
--- what a human wants to read.
+-- The calendar: 2020-01-01 through 2034-12-31, one row per day. MERGE rather
+-- than INSERT so re-running this file is a no-op, matching the unknown member
+-- above and the RLS seed in 01_meta_layer.sql.
+
+MERGE INTO CORE.DIM_DATE t
+USING (
+    SELECT TO_NUMBER(TO_CHAR(D, 'YYYYMMDD')) AS DATE_KEY,
+           D                                 AS FULL_DATE,
+           DAYNAME(D)                        AS DAY_NAME,
+           DAYOFWEEKISO(D) >= 6              AS IS_WEEKEND,
+           MONTH(D)                          AS MONTH_NUMBER,
+           MONTHNAME(D)                      AS MONTH_NAME,
+           QUARTER(D)                        AS QUARTER_NUMBER,
+           YEAR(D)                           AS YEAR_NUMBER
+    FROM (
+        SELECT DATEADD(day, ROW_NUMBER() OVER (ORDER BY SEQ4()) - 1,
+                       DATE '2020-01-01') AS D
+        FROM TABLE(GENERATOR(ROWCOUNT => 5479))
+    )
+) s ON t.DATE_KEY = s.DATE_KEY
+WHEN NOT MATCHED THEN INSERT
+    (DATE_KEY, FULL_DATE, DAY_NAME, IS_WEEKEND, MONTH_NUMBER, MONTH_NAME,
+     QUARTER_NUMBER, YEAR_NUMBER, DWH_INSERTED_AT)
+    VALUES
+    (s.DATE_KEY, s.FULL_DATE, s.DAY_NAME, s.IS_WEEKEND, s.MONTH_NUMBER,
+     s.MONTH_NAME, s.QUARTER_NUMBER, s.YEAR_NUMBER, CURRENT_TIMESTAMP());
+
+-- Natural key is the source file's name plus its own row index. The index alone
+-- is not enough: it restarts at 0 in every file, so a second source file would
+-- MERGE its rows straight over the first file's. File + index is stable across
+-- reloads of the same file, which is what makes the MERGE idempotent, and
+-- unique across files, which is what makes a second file safe.
+--
+-- The IS_* flags are additive so MART can SUM them; FLIGHT_STATUS is kept
+-- because the string is what a human wants to read.
 CREATE TABLE IF NOT EXISTS CORE.FCT_FLIGHT_BOOKING (
-    BOOKING_KEY        VARCHAR(32)   NOT NULL,   -- MD5(BOOKING_ID)
-    BOOKING_ID         NUMBER(38,0)  NOT NULL,   -- source row index
+    BOOKING_KEY        VARCHAR(32)   NOT NULL,   -- MD5(SRC_FILE_NAME|BOOKING_ID)
+    SOURCE_FILE_NAME   VARCHAR       NOT NULL,   -- stage path the row came from
+    BOOKING_ID         NUMBER(38,0)  NOT NULL,   -- row index within that file
     PASSENGER_KEY      VARCHAR(32)   NOT NULL,
     AIRPORT_KEY        VARCHAR(32)   NOT NULL,
     DEPARTURE_DATE_KEY NUMBER(8,0)   NOT NULL,

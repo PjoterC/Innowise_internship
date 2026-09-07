@@ -9,6 +9,7 @@ SELECT RUN_ID,
        SUM(IFF(STATUS = 'FAILED', 1, 0)) AS steps_failed,
        SUM(ROWS_INSERTED)                AS rows_inserted,
        SUM(ROWS_UPDATED)                 AS rows_updated,
+       SUM(ROWS_DELETED)                 AS rows_deleted,
        MIN(STARTED_AT)                   AS started_at,
        ROUND(SUM(DURATION_SEC), 2)       AS total_sec
 FROM META.ETL_AUDIT_LOG
@@ -16,7 +17,7 @@ GROUP BY RUN_ID, PIPELINE_NAME
 ORDER BY started_at DESC;
 
 -- Step detail for the most recent run.
-SELECT TARGET_OBJECT, OPERATION, ROWS_INSERTED, ROWS_UPDATED,
+SELECT TARGET_OBJECT, OPERATION, ROWS_INSERTED, ROWS_UPDATED, ROWS_DELETED,
        ROUND(DURATION_SEC, 2) AS duration_sec, STATUS, ERROR_MESSAGE, QUERY_ID
 FROM META.ETL_AUDIT_LOG
 WHERE RUN_ID = (SELECT RUN_ID FROM META.ETL_AUDIT_LOG ORDER BY AUDIT_ID DESC LIMIT 1)
@@ -33,6 +34,23 @@ UNION ALL SELECT 'MART.AGG_FLIGHT_STATUS_DAILY', COUNT(*) FROM MART.AGG_FLIGHT_S
 -- Whether anything is waiting to be processed.
 SELECT 'STRM_AIRLINE_RAW_DIM_PASSENGER' AS stream, SYSTEM$STREAM_HAS_DATA('RAW.STRM_AIRLINE_RAW_DIM_PASSENGER') AS has_data
 UNION ALL SELECT 'STRM_AIRLINE_RAW_DIM_AIRPORT',    SYSTEM$STREAM_HAS_DATA('RAW.STRM_AIRLINE_RAW_DIM_AIRPORT')
-UNION ALL SELECT 'STRM_AIRLINE_RAW_DIM_DATE',       SYSTEM$STREAM_HAS_DATA('RAW.STRM_AIRLINE_RAW_DIM_DATE')
 UNION ALL SELECT 'STRM_AIRLINE_RAW_FCT_BOOKING',    SYSTEM$STREAM_HAS_DATA('RAW.STRM_AIRLINE_RAW_FCT_BOOKING')
 UNION ALL SELECT 'STRM_FCT_BOOKING_MART',           SYSTEM$STREAM_HAS_DATA('CORE.STRM_FCT_BOOKING_MART');
+
+-- Calendar coverage. DIM_DATE is generated over a fixed range by
+-- sql/ddl/03_core_layer.sql rather than densified from the data, and MART joins
+-- it with an INNER JOIN — so a booking dated outside that range would vanish
+-- from the secure view and the aggregate with no error anywhere. Must be 0.
+SELECT COUNT(*) AS bookings_with_no_calendar_row
+FROM CORE.FCT_FLIGHT_BOOKING f
+LEFT JOIN CORE.DIM_DATE d ON d.DATE_KEY = f.DEPARTURE_DATE_KEY
+WHERE d.DATE_KEY IS NULL;
+
+
+-- A departure date that does not parse resolves to the -1 unknown member, which
+-- does have a calendar row — so it passes the check above while contributing
+-- nothing usable to the mart.
+-- Must be 0.
+SELECT COUNT(*) AS bookings_with_unparsed_departure_date
+FROM CORE.FCT_FLIGHT_BOOKING
+WHERE DEPARTURE_DATE_KEY = -1;

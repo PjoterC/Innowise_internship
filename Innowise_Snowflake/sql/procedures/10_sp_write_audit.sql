@@ -1,7 +1,7 @@
 -- The single writer of the audit log. Every load procedure calls exactly this,
 -- on success and on failure, so the table has one shape and one producer.
--- FINISHED_AT and DURATION_SEC are computed here, not passed in, so a caller
--- cannot report a duration that disagrees with its own timestamps.
+
+
 
 USE DATABASE AIRLINE_DWH;
 
@@ -12,6 +12,7 @@ CREATE OR REPLACE PROCEDURE META.SP_WRITE_AUDIT(
     P_OPERATION     STRING,
     P_ROWS_INSERTED NUMBER,
     P_ROWS_UPDATED  NUMBER,
+    P_ROWS_DELETED  NUMBER,
     P_STARTED_AT    TIMESTAMP_LTZ,
     P_STATUS        STRING,
     P_ERROR_MESSAGE STRING,
@@ -24,11 +25,14 @@ $$
 BEGIN
     INSERT INTO META.ETL_AUDIT_LOG (
         RUN_ID, PIPELINE_NAME, TARGET_OBJECT, OPERATION,
-        ROWS_INSERTED, ROWS_UPDATED,
+        ROWS_INSERTED, ROWS_UPDATED, ROWS_DELETED,
         STARTED_AT, FINISHED_AT, DURATION_SEC,
         STATUS, ERROR_MESSAGE, QUERY_ID)
-    SELECT :P_RUN_ID, :P_PIPELINE_NAME, :P_TARGET_OBJECT, :P_OPERATION,
+    
+    SELECT COALESCE(:P_RUN_ID, 'unknown'),
+           :P_PIPELINE_NAME, :P_TARGET_OBJECT, :P_OPERATION,
            COALESCE(:P_ROWS_INSERTED, 0), COALESCE(:P_ROWS_UPDATED, 0),
+           COALESCE(:P_ROWS_DELETED, 0),
            :P_STARTED_AT, CURRENT_TIMESTAMP(),
            DATEDIFF('millisecond', :P_STARTED_AT, CURRENT_TIMESTAMP()) / 1000.0,
            :P_STATUS,

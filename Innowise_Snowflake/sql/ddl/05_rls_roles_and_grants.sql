@@ -1,13 +1,24 @@
 -- Demo roles — the other half of row-level security. A filter is only a control
 -- if the reader cannot go around it, so these roles get USAGE on MART and
--- SELECT on the secure view, and nothing at all on RAW, CORE or META. The view
--- still works for them because its owner can read the base tables (Snowflake's
--- ownership chain) while the caller cannot.
---
+-- SELECT on the secure view, and nothing at all on RAW, CORE or META.
 -- Needs ACCOUNTADMIN or SECURITYADMIN — this is the only script that touches
 -- anything outside the AIRLINE_DWH database.
 
 USE DATABASE AIRLINE_DWH;
+
+EXECUTE IMMEDIATE $$
+DECLARE
+    V_WH STRING;
+    E_NO_WAREHOUSE EXCEPTION (-20010,
+        'No current warehouse. Set SNOWFLAKE_WAREHOUSE in .env (or run USE WAREHOUSE ...) before 05_rls_roles_and_grants.sql.');
+BEGIN
+    V_WH := CURRENT_WAREHOUSE();
+    IF (V_WH IS NULL) THEN
+        RAISE E_NO_WAREHOUSE;
+    END IF;
+    RETURN V_WH;
+END;
+$$;
 
 -- Read from the session so nothing is hard-coded to one account.
 SET wh_name      = CURRENT_WAREHOUSE();

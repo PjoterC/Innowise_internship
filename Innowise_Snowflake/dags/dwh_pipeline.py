@@ -1,16 +1,13 @@
 """The main pipeline: stage 1 -> stage 2 -> stage 3.
 
     dim_passenger ─┐
-    dim_airport   ─┼─> fct_flight_booking ──> agg_flight_status_daily ──> audit
-    dim_date      ─┘
+    dim_airport   ─┴─> fct_flight_booking ──> agg_flight_status_daily ──> audit
 
 Every task is one CALL. All the SQL lives in stored procedures, so this file
 holds the ordering and nothing else — which is the only thing Airflow is better
 at than Snowflake.
 
-Each procedure reads its own stream. That is what makes the DAG restartable:
-the three dimensions can succeed and the fact fail, and a retry re-runs all four
-while the three that already committed find their streams empty and do nothing.
+The third dimension table - DIM_DATE is pre-filled so nothing to do with it here.
 """
 
 from __future__ import annotations
@@ -38,10 +35,6 @@ def dwh_pipeline():
         return call_load_procedure("CORE.SP_LOAD_DIM_AIRPORT")
 
     @task
-    def load_dim_date() -> str:
-        return call_load_procedure("CORE.SP_LOAD_DIM_DATE")
-
-    @task
     def load_fct_flight_booking() -> str:
         return call_load_procedure("CORE.SP_LOAD_FCT_FLIGHT_BOOKING")
 
@@ -55,7 +48,7 @@ def dwh_pipeline():
         run_id = get_current_context()["dag_run"].run_id
         rows = run_query(
             """
-            SELECT TARGET_OBJECT, OPERATION, ROWS_INSERTED, ROWS_UPDATED,
+            SELECT TARGET_OBJECT, OPERATION, ROWS_INSERTED, ROWS_UPDATED, ROWS_DELETED,
                    ROUND(DURATION_SEC, 2), STATUS
             FROM META.ETL_AUDIT_LOG
             WHERE RUN_ID = %s
@@ -64,13 +57,15 @@ def dwh_pipeline():
             (run_id,),
         )
         for row in rows:
-            print(f"{row[0]:<32} {row[1]:<6} +{row[2]:<8} ~{row[3]:<8} {row[4]:>8}s  {row[5]}")
+            print(
+                f"{row[0]:<32} {row[1]:<6} +{row[2]:<8} ~{row[3]:<8} -{row[4]:<8} "
+                f"{row[5]:>8}s  {row[6]}"
+            )
         return rows
 
-    # The dimensions are independent of each other; the fact needs all three to
-    # exist first, and the aggregate needs the fact.
+    
     chain(
-        [load_dim_passenger(), load_dim_airport(), load_dim_date()],
+        [load_dim_passenger(), load_dim_airport()],
         load_fct_flight_booking(),
         load_agg_flight_status_daily(),
         report_audit_log(),
