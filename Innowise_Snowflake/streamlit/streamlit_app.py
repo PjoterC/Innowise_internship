@@ -23,7 +23,7 @@ from snowflake.snowpark.context import get_active_session
 
 PROCEDURE = "TOOLING.APPS.SP_CLONE_DATABASE"
 PLACEHOLDERS = ", ".join(["?"] * 12)
-TYPE_IT = "— type a name —"
+TYPE_IT = "— choose a name —"
 
 # Mirrors TOOLING.APPS.F_IDENTIFIER, and is the one piece of validation that is
 # duplicated here rather than left to the procedure: SHOW needs an identifier,
@@ -118,7 +118,7 @@ def current(setting: str) -> str:
         return ""
 
 
-def picker(label: str, options: list[str], key: str, help: str = "", default: str = "") -> str:
+def picker(label: str, options: list[str], key: str, help: str = "", default: str = "", allow_custom = True) -> str:
     """Pick from a SHOW listing, or type a name that does not exist yet.
 
     Written as selectbox-plus-text rather than one free-text combobox so it
@@ -129,6 +129,8 @@ def picker(label: str, options: list[str], key: str, help: str = "", default: st
     choice = st.selectbox(label, [TYPE_IT] + options, key=f"{key}_pick", help=help)
     if choice != TYPE_IT:
         return choice
+    if not allow_custom:
+        return ""
     return st.text_input(f"{label} (new)", value=default, key=f"{key}_new").strip()
 
 
@@ -151,7 +153,7 @@ st.subheader("Source and target")
 col_src, col_tgt = st.columns(2)
 with col_src:
     source_db = picker("Source database", databases, "source",
-                       help="Cloned as it stands. The source is never modified.")
+                       help="Cloned as it stands. The source is never modified.", allow_custom=False,)
 with col_tgt:
     target_db = st.text_input(
         "Target database name", key="target",
@@ -217,7 +219,7 @@ with st.expander("Options"):
         "Also grant USAGE on warehouse", warehouses, "wh",
         help="Without warehouse USAGE these roles can list objects but cannot run a "
              "query, which reads as a bug rather than a missing grant. Leave empty if "
-             "they already have one.",
+             "they already have one.", allow_custom=False,
     )
     create_missing_roles = st.checkbox("Create roles that do not exist", value=True)
     replace_existing = st.checkbox(
