@@ -400,15 +400,44 @@ deploy.sql              stage, PUT, CREATE STREAMLIT - deploys the streamlit app
 
 The distinction is what the owner role is *for*, and it changes the grant set.
 
-**Development — writable sandbox.** `USAGE, MONITOR, CREATE SCHEMA` on the
+**Development — writable sandbox.** 
+
+`USAGE, MONITOR, CREATE SCHEMA` on the
 database, `ALL PRIVILEGES` on every schema and object in it, present and
 future. `ALL PRIVILEGES` never includes `OWNERSHIP`, so this is purely
 additive.
 
-**Read-only — frozen snapshot.** `USAGE` down the container chain and `SELECT`
+**Reasoning:**
+
+On the database:
+
+- `USAGE` - basic, needed to reach the database at all
+- `MONITOR` - allows use of `DESCRIBE` and reading of metadata (can be useful for verification, debug etc.)
+- `CREATE SCHEMA` - creating new schemas - necessary if we want to develop the database.
+
+On schemas and objects:
+- `ALL PRIVILEDGES` on every schema and object in it, present and future. On schemas, this is what allows `USAGE`, `MODIFY`, `MONITOR` and all `CREATE` priviledges - `CREATE TABLE`, `CREATE VIEW` etc. The core of what a database developer should be able to do. Creator owns the created objects.
+On objects, `ALL PRIVILEDGES` differ per object type, but the developer should have access to all of them anyway.
+
+**NOTE:** As mentioned before, the role does not grant OWNERSHIP of the cloned database by itself. Check **Transfer OWNERSHIP** note further below.
+
+
+**Read-only — frozen snapshot.** 
+
+`USAGE` down the container chain and `SELECT`
 on tables, views, materialized views, external tables, dynamic tables, Iceberg
 tables and streams, plus `USAGE` on functions and file formats so that a view
 calling a UDF still works. The owner cannot change what it was handed.
+
+**Reasoning:**
+
+- `USAGE` down the container chain - database, all schemas and future schemas. Same as before, necessary to access anything.
+- `SELECT` as described above - because the read-only role needs to be able to read the data obviously. Both present and future in case we add some read-only roles to a development database.
+
+Since the role is read-only, it shouldn't have any way of modifying the database, that's why it doesn't have access to procedures or sequences, since they *can* modify the database.
+
+
+
 
 ### IMPORTANT NOTE:
 **Transfer OWNERSHIP** is a separate flag, on by default for development and
