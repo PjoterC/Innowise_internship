@@ -65,33 +65,35 @@ differs is where the SQL lives and how it behaves internally:
   that throws kills the task before the audit `CALL` at the end of the file is
   reached, so that failure exists only in the Airflow log.
 
-Alternatives rather than a sequence, because Snowflake's load history is keyed
-on (table, staged file): running both over one file would COPY the same rows
-twice under two different batch ids.
+Alternatives rather than a sequence: the branch runs exactly one of them.
+Running both over a single staged file would not double the data anyway — no PUT
+happens in between, so the second COPY would find the file already in
+Snowflake's load history and skip it.
 
-Both DAGs are re-runnable, though not in the way the COPY's own load history
-would suggest. `put_file_to_stage` PUTs with `OVERWRITE = TRUE`, so the staged
-object is replaced on every run, and Snowflake identifies an already-loaded file
-by name *and* ETag rather than by content — a re-upload is therefore a modified
-file with a familiar name, which is precisely the case it reloads. Re-running
-`dwh_ingest_raw` over an unchanged CSV appends a second full copy to
-`RAW.AIRLINE_RAW`, with `FORCE` still `FALSE`.
+Both DAGs are re-runnable, and a re-run does reload the file — though not for
+the reason the COPY's own load history would suggest. `put_file_to_stage` PUTs
+with `OVERWRITE = TRUE`, and a PUT to an **internal** stage encrypts the file
+client-side with a freshly generated key and IV on every upload. The object that
+lands on the stage is therefore different bytes each time, even when the CSV has
+not changed by a single character. Snowflake's load history never recognises it,
+and the COPY reads the file again. Re-running `dwh_ingest_raw` over an unchanged
+CSV appends a second full copy to `RAW.AIRLINE_RAW` under its own `BATCH_ID`.
 
-That is deliberate. `OVERWRITE = FALSE` would make PUT
-skip the upload and the COPY skip the file even if it was
-actually updated, only because the name was still the same.
+`FORCE` is left at its default of `FALSE` and is not exposed as a parameter,
+because against this stage it decides nothing: the file is reloaded whichever
+way it is set. It would decide something on an **external** stage, where files
+arrive through ordinary cloud tooling with no per-upload encryption and keep a
+stable ETag — the same setup Snowpipe would need. That is the one change that
+would bring it back.
 
+`OVERWRITE = FALSE` on the PUT would be the wrong lever too: it would make the
+upload skip, and the COPY with it, even when the file genuinely had been
+updated, purely because the name was unchanged.
 
 Nothing downstream is fooled by the duplicate. The MERGEs are keyed on natural
 keys and hash-guarded, so the second batch drains the streams as 0 inserted and
 0 updated — the extra rows sit in `RAW.AIRLINE_RAW` under their own `BATCH_ID`
 and change no answer.
-
-`force_reload` covers the case the paragraph above does *not*: a COPY over a
-file already on the stage that was **not** re-uploaded first. Snowflake's load
-history remembers it and skips it, and `FORCE = TRUE` is the only way to say
-"load it again anyway" — which the audit log then records as a deliberate
-replay rather than as a mystery second batch.
 
 The same keys are what make a *failed* run restartable: if the fact load fails,
 clearing the DAG run re-runs all three CORE tasks, and the two that already
@@ -277,37 +279,16 @@ Each is preceded by the statement that does the damage and followed by a count,
 so `02_dml_time_travel.sql` runs top to bottom and every repair has something
 real to repair.
 
-The pairing is the point: a restore is a *join*, not a rewind. Nothing undoes a
-statement — Time Travel simply exposes an earlier version of the table that
-ordinary DML can read like any other source, so the shape of the repair follows
-from the shape of the damage. Rows that are *wrong* still exist and can be
-joined to; rows that are *gone* have to be selected out of the snapshot whole.
-
-The wrong `UPDATE` is the more instructive of the two, because it is the one a
-pipeline cannot notice. It leaves the row count unchanged and `RECORD_HASH`
-still holding the hash of the old values, so the next run compares hashes, finds
-them equal, and preserves the corruption. Nothing downstream ever reports it.
-
-A third statement at the top of the file is context rather than a repair: it
-pulls a `QUERY_ID` out of `META.ETL_AUDIT_LOG` and counts the table on both
-sides of that load. That is what `QUERY_ID` is doing in the audit table — the id
-of any logged load names the moment immediately before it ran, which turns "the
-pipeline wrote something wrong at 03:00" into an addressable version of the
-table. The two repairs use `LAST_QUERY_ID()` instead, because the statement each
-one undoes was run seconds earlier in the same session.
-
-Retention is set to **7 days** — enough to recover from a bad load discovered
-the following Monday, without paying to keep three months of every intermediate
-version of the landing table. Enterprise allows up to 90.
 
 ## What Enterprise is used for
 
-| Feature | Used | Why |
-|---|---|---|
-| Row access policy | yes | the RLS rule on `MART.V_FLIGHT_BOOKING_SECURE` |
-| Time Travel > 1 day | yes | 7-day retention |
-| Materialized view | no | `MART.AGG_FLIGHT_STATUS_DAILY` is stream-driven, which the pipeline requires anyway and which a materialized view cannot express |
-| Column masking policy | no | nothing here needs masking on top of row filtering |
+The DWH makes use of the features available in the Enterprise edition of Snowflake in the following way:
+
+| Feature | Why |
+|---|---|
+| Row access policy | the RLS rule on `MART.V_FLIGHT_BOOKING_SECURE` |
+| Time Travel > 1 day | 7-day retention |
+
 
 ## Notes on the source data
 

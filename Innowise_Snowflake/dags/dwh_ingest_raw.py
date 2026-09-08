@@ -23,20 +23,27 @@ can tell which one ran. What differs is where the SQL lives:
   that throws takes the whole task down before the audit CALL at the end of the
   file is reached, so a failure exists only in the Airflow log.
 
-They are alternatives rather than a sequence on purpose. Snowflake's load
-history is keyed on (table, staged file), so running both over one file would
-COPY the same rows twice under two different batch ids.
+They are alternatives rather than a sequence: the branch runs exactly one of
+them. Running both over a single staged file would not double anything anyway —
+no PUT happens in between, so the second COPY would find the file already in
+Snowflake's load history and skip it.
 
-Re-running either is safe, but not silent. put_file_to_stage PUTs with
-OVERWRITE = TRUE, and Snowflake identifies an already-loaded file by name and
-ETag rather than by content — so a re-upload reads as a modified file and the
-COPY loads it again even with FORCE = FALSE. A second run therefore appends a
-second full copy to RAW.AIRLINE_RAW, distinguishable by BATCH_ID.
+Re-running the whole DAG is a different matter, and it does reload.
+put_file_to_stage PUTs with OVERWRITE = TRUE, and a PUT to an internal stage
+encrypts the file client-side with a freshly generated key and IV every time —
+so the staged object is different bytes on every upload even when the CSV is
+unchanged. The load history never matches it and the COPY reads it again. A
+second run therefore appends a second full copy to RAW.AIRLINE_RAW under its own
+BATCH_ID.
 
-Nothing downstream is fooled: the MERGEs are keyed on natural keys, so the
-duplicate batch drains all four streams as zero inserts and zero updates. Set
-the `force_reload` param to replay a file deliberately — it is the honest way to
-say so, and the audit log records it as such.
+FORCE stays at its default of FALSE and is not exposed as a parameter: on an
+internal stage it decides nothing, since the file is reloaded either way. It
+would decide something on an external stage, where files arrive without
+per-upload encryption and keep a stable ETag.
+
+Nothing downstream is fooled: the MERGEs are keyed on natural keys and
+hash-guarded, so the duplicate batch drains all four streams as zero inserts and
+zero updates.
 """
 
 from __future__ import annotations
@@ -69,7 +76,6 @@ SQL_DIR = Path(__file__).resolve().parent.parent / "sql"
         # data/ is mounted into the container by docker-compose.yml.
         "source_file": Param("/opt/airflow/data/Airline Dataset.csv", type="string"),
         "load_method": Param("procedure", type="string", enum=["procedure", "operator"]),
-        "force_reload": Param(False, type="boolean"),
     },
     doc_md=__doc__,
 )
@@ -113,12 +119,8 @@ def dwh_ingest_raw():
         """Run the stage-1 load procedure, which also writes the audit row."""
         context = get_current_context()
         rows = run_query(
-            "CALL RAW.SP_LOAD_RAW_FROM_STAGE(%s, %s, %s)",
-            (
-                context["dag_run"].run_id,
-                file_pattern,
-                bool(context["params"]["force_reload"]),
-            ),
+            "CALL RAW.SP_LOAD_RAW_FROM_STAGE(%s, %s)",
+            (context["dag_run"].run_id, file_pattern),
         )
         print(rows[0][0])
         return rows[0][0]
@@ -137,10 +139,7 @@ def dwh_ingest_raw():
         show_return_value_in_logs=True,
     )
 
-    # Landing rows is only half a load — they are not in the model until the
-    # main pipeline drains the streams, so this hands straight over. The trigger
-    # rule is the branch's doing: exactly one of the two COPY tasks runs and the
-    # other is skipped, which the default all_success would refuse to accept.
+    # Trigger the main pipeline dag
     run_pipeline = TriggerDagRunOperator(
         task_id="run_main_pipeline",
         trigger_dag_id="dwh_pipeline",

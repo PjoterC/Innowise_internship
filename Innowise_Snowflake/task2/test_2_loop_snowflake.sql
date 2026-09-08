@@ -1,9 +1,6 @@
 -- =============================================================================
 -- Task 2 - Snowflake solution
 --
--- Question: can the 20 hand-written CALL statements be replaced by a loop?
--- Answer:   yes, but only two of the three arguments are data.
---
 --   arg1 (batch date)  - data, must be listed
 --   arg2 (loaded_at)   - data, must be listed; no formula relates it to arg1
 --   arg3 (prev batch)  - DERIVED: it is always arg1 of the preceding call,
@@ -72,9 +69,7 @@ BEGIN
         V_ARG2 := REC.ARG2;
         V_ARG3 := REC.ARG3;
 
-        -- The original script passed string literals, so the arguments are
-        -- rebuilt as strings in exactly the original spelling - including the
-        -- nine fractional-second digits, which TIMESTAMP_NTZ(9) keeps.
+       
         CALL TEST_2(:V_ARG1, :V_ARG2, :V_ARG3);
 
         -- If TEST_2 is declared as (DATE, TIMESTAMP_NTZ, DATE), drop the
@@ -92,27 +87,3 @@ $$;
 -- Run it:
 CALL RUN_TEST_2_BATCHES('2025-01-28'::DATE);
 
-
--- -----------------------------------------------------------------------------
--- Note on transactions
---
--- Statements inside a Snowflake procedure autocommit individually unless the
--- body opens an explicit transaction, so this loop matches the loose CALLs:
--- a failure on call #5 leaves calls #1-#4 committed. Wrap the FOR loop in
--- BEGIN TRANSACTION / COMMIT if all-or-nothing is wanted instead.
--- -----------------------------------------------------------------------------
-
-
--- -----------------------------------------------------------------------------
--- Variant: keep the driver in a table instead of an inline VALUES list, so
--- adding a batch is an INSERT rather than an edit to the procedure body.
---
---   CREATE OR REPLACE TABLE META.TEST_2_BATCHES (
---       BATCH_DATE DATE          NOT NULL,
---       LOADED_AT  TIMESTAMP_NTZ NOT NULL
---   );
---
--- and replace the VALUES list in the driver query with:
---
---   FROM META.TEST_2_BATCHES
--- -----------------------------------------------------------------------------

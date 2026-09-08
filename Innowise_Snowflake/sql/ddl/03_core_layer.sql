@@ -6,10 +6,7 @@
 -- look a dimension up. DIM_DATE keeps the classic integer YYYYMMDD key, which
 -- gives the "unknown" member an obvious spelling (-1).
 --
--- RECORD_HASH is what makes SCD type 1 honest: the MERGE only updates when the
--- hash differs, so re-running over unchanged data audits as 0 updated instead
--- of 98,619 no-op writes.
---
+
 -- Profiled before modelling: "Pilot Name" equals the passenger's own name in
 -- 100% of rows (source junk, dropped); "Arrival Airport" is the IATA code of
 -- the airport in "Airport Name" and neither is unique alone, so the airport's

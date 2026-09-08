@@ -1,18 +1,12 @@
 -- =============================================================================
 -- Task 2 - PostgreSQL solution
 --
--- Question: can the 20 hand-written CALL statements be replaced by a loop?
--- Answer:   yes, but only two of the three arguments are data.
---
 --   arg1 (batch date)  - data, must be listed
 --   arg2 (loaded_at)   - data, must be listed; no formula relates it to arg1
 --   arg3 (prev batch)  - DERIVED: it is always arg1 of the preceding call,
 --                        i.e. LAG(arg1) over the calls ordered by arg1.
 --                        The very first call has no predecessor, so it needs a
 --                        seed value ('2025-01-28').
---
--- So the loop does not shrink the payload to nothing - it removes the third
--- column and, more importantly, removes the chance of mis-typing the chain.
 -- =============================================================================
 
 CREATE OR REPLACE PROCEDURE run_test_2_batches(
@@ -83,27 +77,4 @@ CALL run_test_2_batches();
 -- CALL run_test_2_batches(DATE '2025-01-28');
 
 
--- -----------------------------------------------------------------------------
--- Note on transactions
---
--- The 20 loose CALLs each committed on their own. Here they run inside one
--- procedure, so an error on call #5 rolls back calls #1-#4 as well, unless
--- test_2 issues its own COMMIT. If per-call durability matters, add a COMMIT
--- inside the loop - a PL/pgSQL *procedure* is allowed to do that (a function
--- is not).
--- -----------------------------------------------------------------------------
 
-
--- -----------------------------------------------------------------------------
--- Variant: keep the driver in a table instead of an inline VALUES list, so
--- adding a batch is an INSERT rather than an edit to the procedure body.
---
---   CREATE TABLE test_2_batches (
---       batch_date date PRIMARY KEY,
---       loaded_at  timestamp NOT NULL
---   );
---
--- and replace the derived table in the FOR loop with:
---
---   FROM test_2_batches
--- -----------------------------------------------------------------------------

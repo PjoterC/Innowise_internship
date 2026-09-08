@@ -23,7 +23,8 @@
 --     twice: hence the try number rather than a clock reading, which would tick
 --     between the two substitutions and leave the COUNT below matching nothing;
 --   * the pattern comes from put_file_to_stage, which builds it out of
---     [A-Za-z0-9_.-] only, so it cannot close the literal it sits in.
+--     [A-Za-z0-9_.-] only, so it cannot close the literal it sits in;
+
 
 SET v_started  = CURRENT_TIMESTAMP();
 SET v_batch_id = '{{ run_id | replace("'", "''") }}::try{{ ti.try_number }}';
@@ -44,7 +45,7 @@ FROM (
 PATTERN = '{{ ti.xcom_pull(task_ids="put_file_to_stage") }}'
 FILE_FORMAT = (FORMAT_NAME = RAW.FF_AIRLINE_CSV)
 ON_ERROR = ABORT_STATEMENT
-FORCE = {{ 'TRUE' if params.force_reload else 'FALSE' }};
+FORCE = FALSE;
 
 -- Immediately after the COPY, before any other statement moves it on.
 SET v_query_id = LAST_QUERY_ID();

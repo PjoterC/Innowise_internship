@@ -3,9 +3,9 @@
 -- server-side lives here, so the load is a database object that can be
 -- reviewed, granted and called from anywhere.
 --
--- The COPY is dynamic SQL for one reason: PATTERN and FORCE cannot be bind
--- variables in a COPY statement. That makes two of the arguments part of the
--- statement *text* rather than data, so each is dealt with before it gets there:
+-- The COPY is dynamic SQL for one reason: PATTERN cannot be a bind variable in
+-- a COPY statement. Both arguments therefore end up in the statement *text*
+-- rather than travelling as data, so each is dealt with before it gets there:
 --
 --   P_FILE_PATTERN  REJECTED if it holds a quote or a backslash. Those two are
 --                   the complete set of ways out of the string literal it is
@@ -27,21 +27,13 @@
 -- is the guard for every *other* caller, since the procedure can be granted and
 -- called from anywhere. Patterns the DAG generates pass it unchanged.
 --
---   P_FORCE_RELOAD  FALSE — leave Snowflake's own load history to decide. Note
---                           that it identifies a loaded file by name and ETag,
---                           not by content, so a file re-staged by a PUT with
---                           OVERWRITE = TRUE is reloaded regardless: the caller
---                           gets a second copy in RAW under a new BATCH_ID.
---                   TRUE  — reload regardless; for a deliberate replay only.
---                   Boolean, so it reaches the text through IFF and cannot
---                   carry anything but the word TRUE or FALSE.
+
 
 USE DATABASE AIRLINE_DWH;
 
 CREATE OR REPLACE PROCEDURE RAW.SP_LOAD_RAW_FROM_STAGE(
     P_RUN_ID       STRING,
-    P_FILE_PATTERN STRING,
-    P_FORCE_RELOAD BOOLEAN
+    P_FILE_PATTERN STRING
 )
 RETURNS STRING
 LANGUAGE SQL
@@ -103,7 +95,7 @@ BEGIN
         PATTERN = ''' || P_FILE_PATTERN || '''
         FILE_FORMAT = (FORMAT_NAME = RAW.FF_AIRLINE_CSV)
         ON_ERROR = ABORT_STATEMENT
-        FORCE = ' || IFF(COALESCE(P_FORCE_RELOAD, FALSE), 'TRUE', 'FALSE');
+        FORCE = FALSE';
 
     EXECUTE IMMEDIATE :V_SQL;
     V_QUERY_ID := SQLID;
