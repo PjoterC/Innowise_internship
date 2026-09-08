@@ -1,0 +1,10 @@
+# Credentials — the template (.env.example) is the only one that gets committed.
+.env
+secrets/*
+!secrets/.gitkeep
+
+logs/*
+!logs/.gitkeep
+simple_auth_manager_passwords.json.generated
+__pycache__/
+*.csv

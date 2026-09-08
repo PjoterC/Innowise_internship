@@ -77,20 +77,40 @@ file with a familiar name, which is precisely the case it reloads. Re-running
 `dwh_ingest_raw` over an unchanged CSV appends a second full copy to
 `RAW.AIRLINE_RAW`, with `FORCE` still `FALSE`.
 
-That is a deliberate. `OVERWRITE = FALSE` would make PUT
+That is deliberate. `OVERWRITE = FALSE` would make PUT
 skip the upload and the COPY skip the file even if it was
 actually updated, only because the name was still the same.
 
 
-Set `force_reload` to replay a file deliberately; it is the honest way to say
-"load it again" and it shows up as such in the audit log. The same key design is
-what makes a *failed* run restartable: if the fact load fails, retrying re-runs
-all three CORE tasks and the two that already committed find nothing to do.
+Nothing downstream is fooled by the duplicate. The MERGEs are keyed on natural
+keys and hash-guarded, so the second batch drains the streams as 0 inserted and
+0 updated — the extra rows sit in `RAW.AIRLINE_RAW` under their own `BATCH_ID`
+and change no answer.
+
+`force_reload` covers the case the paragraph above does *not*: a COPY over a
+file already on the stage that was **not** re-uploaded first. Snowflake's load
+history remembers it and skips it, and `FORCE = TRUE` is the only way to say
+"load it again anyway" — which the audit log then records as a deliberate
+replay rather than as a mystery second batch.
+
+The same keys are what make a *failed* run restartable: if the fact load fails,
+clearing the DAG run re-runs all three CORE tasks, and the two that already
+committed find their streams empty and nothing to do.
 
 ### Four streams
 
 A stream is a cursor, and the first DML that reads it advances it. Three
-consumers sharing one stream would mean two of them see an empty table.
+consumers sharing one stream would mean two of them see an empty table — hence
+three separate streams on `RAW.AIRLINE_RAW`, one per CORE loader. All three are
+`APPEND_ONLY`, because RAW is insert-only and there is nothing else to carry.
+
+The fourth, `CORE.STRM_FCT_BOOKING_MART`, is the odd one out and deliberately
+*not* `APPEND_ONLY`. The fact is loaded by MERGE, so a correction arrives as an
+update — which the stream reports as a DELETE row carrying the old airport plus
+an INSERT row carrying the new one. That pair is what lets the mart loader see
+both the cell a booking left and the cell it moved to, and it is the reason
+`ROWS_DELETED` exists at all (see *Audit logging* below). An `APPEND_ONLY`
+stream here would show only the arrival and leave the abandoned cell standing.
 
 `CORE.DIM_DATE` has no stream at all. Every column in it is a pure function of
 the date, so it is generated once over a fixed range (2020–2034) by
@@ -104,17 +124,26 @@ none does.
 ## Running the app
 
 ```bash
-# 1. credentials — see "Where credentials go" below
+# 1. the source data. *.csv is gitignored, so the dataset is not in the repo —
+#    drop it here yourself, under exactly this name, or point the DAG's
+#    `source_file` param somewhere else.
+ls "data/Airline Dataset.csv"
+
+# 2. credentials — see "Where credentials go" below
 cp .env.example .env && $EDITOR .env
 ../.venv/bin/python check_connection.py
 
-# 2. deploy the warehouse (DDL first, then procedures)
+# 3. deploy the warehouse (DDL first, then procedures)
 ../.venv/bin/python scripts/run_sql.py --quiet sql/ddl/0*.sql sql/procedures/*.sql
 
-# 3. start Airflow, then unpause and trigger `dwh_ingest_raw` at localhost:8080
+# 4. start Airflow, then unpause and trigger `dwh_ingest_raw` at localhost:8080
 docker compose up airflow-init
 docker compose up -d
 ```
+
+`data/` is mounted into the worker as `/opt/airflow/data`, which is where the
+DAG's default `source_file` points. The file name contains a space; that is
+deliberate and handled (the PUT quotes the URI), so keep it.
 
 `scripts/run_sql.py` is the hand-driven entry point — for deploying DDL before
 Airflow is up, and for the Time Travel and row-level-security scripts, which do
@@ -145,9 +174,20 @@ database + grants (task 3)
 
 ## Audit logging
 
-Every procedure wraps its DML the same way: run it, read the insert/update
-counts out of `RESULT_SCAN` of its own query id, and call `META.SP_WRITE_AUDIT`
-— on the failure path too, before re-raising so the Airflow task still goes red.
+Every procedure wraps its DML the same way: run it, count what it did, and call
+`META.SP_WRITE_AUDIT` — on the failure path too, before re-raising so the
+Airflow task still goes red. One writer, one row shape, whatever the step.
+
+Where the count comes from differs by one step, and the exception is the
+interesting one:
+
+* the four **MERGE** loaders read `RESULT_SCAN` of their own query id, which
+  hands back `"number of rows inserted"` / `"updated"` / `"deleted"` directly;
+* the **COPY** loader cannot. A COPY that loaded nothing returns a result with
+  no `rows_loaded` column at all, so `RESULT_SCAN` would throw in exactly the
+  case most worth logging — "the DAG ran and there was nothing new". It counts
+  `RAW.AIRLINE_RAW` by its own `BATCH_ID` instead, which is well defined at
+  zero. The operator path does the same thing for the same reason.
 
 ```sql
 SELECT TARGET_OBJECT, OPERATION, ROWS_INSERTED, ROWS_UPDATED, ROWS_DELETED, STATUS
@@ -210,13 +250,18 @@ a policy on the fact table would also apply to the pipeline's own reads — the
 stream, and the aggregate procedure that drains it — so the loader's role would
 need every continent granted just to do its job.
 
-```bash
-../.venv/bin/python scripts/run_sql.py sql/analysis/rls_demo.sql
-```
+To verify the role-based data access, run `sql/analysis/rls_demo.sql` top to
+bottom **from Snowsight** rather than through `run_sql.py` — the file switches
+roles as it goes, and some authentication methods (a PAT among them) are bound
+to one role and refuse `USE ROLE`.
 
-...shows `DWH_ANALYST_EU` seeing only `EU`, `DWH_ANALYST_NAM` only `NAM`, and
+It shows `DWH_ANALYST_EU` seeing only `EU`, `DWH_ANALYST_NAM` only `NAM`, and
 `DWH_ADMIN` seeing everything — same query, three results — plus
-`POLICY_REFERENCES` listing everywhere the policy is in force.
+`POLICY_REFERENCES` listing everywhere the policy is in force. The last
+statement in the file is a **negative** test and is *expected to fail*: an
+analyst selecting straight from `CORE.FCT_FLIGHT_BOOKING` must be refused, since
+a filter you can walk around is not a control. A row count there — even 0 — is
+the failure case, and usually means a secondary role is doing the reading.
 
 ## Time Travel
 
@@ -293,12 +338,25 @@ values are typed once. You can use the example template present in the repositor
 |---|---|---|
 | `SNOWFLAKE_ACCOUNT` | yes | The account **identifier** (`myorg-my_account`), not the URL |
 | `SNOWFLAKE_USER` | yes | Login name |
-| `SNOWFLAKE_PRIVATE_KEY_PATH` | one of the two | Path to a PKCS#8 key, e.g. `secrets/snowflake_key.p8` |
-| `SNOWFLAKE_PASSWORD` | one of the two | Leave blank when using a key |
+| `SNOWFLAKE_PAT` | **exactly one of these four** | Personal access token. The recommended one — see below |
+| `SNOWFLAKE_OAUTH_TOKEN` | ″ | Static OAuth token; needs `SNOWFLAKE_AUTHENTICATOR=oauth` |
+| `SNOWFLAKE_PRIVATE_KEY_PATH` | ″ | Path to a PKCS#8 key, e.g. `secrets/snowflake_key.p8` |
+| `SNOWFLAKE_PASSWORD` | ″ | Only if the account still permits password login |
+| `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` | no | Only for an encrypted key file |
+| `SNOWFLAKE_AUTHENTICATOR` | no | Defaults to `snowflake`. Must agree with the credential above — see below |
 | `SNOWFLAKE_ROLE` / `_WAREHOUSE` / `_DATABASE` / `_SCHEMA` | no | Blank falls back to the user's defaults |
 
-`.env` and `secrets/` are both gitignored, so nothing secret can be committed by
-accident. `.env.example` is the only one that gets committed — keep it blank.
+Fill in **one** credential and leave the other three blank. `check_connection.py`
+reads them in the order listed — PAT, OAuth token, key, password — and uses the
+first one it finds, so a leftover value from a method you have stopped using
+would quietly win. It is the reason to blank the old one rather than to add the
+new one alongside it.
+
+`.env` and `secrets/` are both listed in `Innowise_Snowflake/.gitignore`, and
+`.env.example` is the template that gets committed in their place — keep it
+blank. **The `.gitignore` has to be committed for any of that to protect a fresh
+clone**; check with `git check-ignore -v .env` before the first push from a new
+checkout.
 
 
 
@@ -327,9 +385,10 @@ checks the two agree before it opens a socket.
 
 ## Testing the connection locally
 
-Remember to have all requirements from `requirements.txt` installed with pip.
-No Docker involved. The repo-root `.venv` already has
-`snowflake-connector-python` and `python-dotenv`:
+No Docker involved. The local script needs `requirements-local.txt`
+(`snowflake-connector-python`, `python-dotenv`, plus `cryptography` if you
+authenticate with a key pair) — **not** `requirements.txt`, which holds the
+Airflow provider packages that go into the image.
 
 ```bash
 source ../.venv/bin/activate
@@ -377,7 +436,7 @@ Both print the session context into the task log.
 
 Not much to discuss here, since the task focuses on one thing only.
 
-The files that serve as the soloution are pretty clearly labeled and are present in the `task2/` directory.
+The files that serve as the solution are pretty clearly labeled and are present in the `task2/` directory.
 
 
 # Streamlit DB clone (task 3)

@@ -16,8 +16,7 @@ CREATE FILE FORMAT IF NOT EXISTS RAW.FF_AIRLINE_CSV
 
 -- Internal, not external: an external stage would need a bucket and a storage
 -- integration this project does not have. Airflow PUTs here, a procedure COPYs
--- out. (An external stage is also what Snowpipe auto-ingest would require —
--- see the README for what would change.)
+-- out.
 CREATE STAGE IF NOT EXISTS RAW.STG_AIRLINE_FILES
     FILE_FORMAT = RAW.FF_AIRLINE_CSV
     DIRECTORY = (ENABLE = TRUE)

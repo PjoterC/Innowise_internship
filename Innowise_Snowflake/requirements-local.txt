@@ -1,0 +1,4 @@
+# For running check_connection.py outside Docker, in the repo-root .venv.
+# All three are already installed there; this file just records the intent.
+snowflake-connector-python
+python-dotenv
