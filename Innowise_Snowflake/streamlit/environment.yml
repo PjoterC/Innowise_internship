@@ -1,0 +1,11 @@
+# Packages for Streamlit in Snowflake. The app only needs what the runtime
+# already provides — streamlit itself and the Snowpark session — so this file
+# exists to pin the channel and to be the place any future dependency goes.
+#
+# Only the `snowflake` Anaconda channel is available inside Snowflake; pip
+# requirements are not read.
+name: sf_env
+channels:
+  - snowflake
+dependencies:
+  - streamlit
